@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/cilium/cilium/api/v1/models"
@@ -210,8 +211,24 @@ func (h *getPolicyResolve) Handle(params GetPolicyResolveParams) middleware.Resp
 
 	// Return allowed verdict if policy enforcement isn't enabled between the two sets of labels.
 	if !isPolicyEnforcementEnabled {
+		buffer := new(bytes.Buffer)
+		ctx := params.IdentityContext
+		searchCtx := policy.SearchContext{
+			From:    labels.NewSelectLabelArrayFromModel(ctx.From),
+			Trace:   policy.TRACE_ENABLED,
+			To:      labels.NewSelectLabelArrayFromModel(ctx.To),
+			DPorts:  ctx.Dports,
+			Logging: logging.NewLogBackend(buffer, "", 0),
+		}
+		if ctx.Verbose {
+			searchCtx.Trace = policy.TRACE_VERBOSE
+		}
+		verdict := api.Allowed.String()
+		searchCtx.PolicyTrace("Result: %s\n", strings.ToUpper(verdict))
+		msg := fmt.Sprintf("%s\n  Policy enforcement is not enabled for these two sets of labels\n%s", searchCtx.String(), buffer.String())
 		return NewGetPolicyResolveOK().WithPayload(&models.PolicyTraceResult{
-			Verdict: api.Allowed.String(),
+			Log:     msg,
+			Verdict: verdict,
 		})
 	}
 
